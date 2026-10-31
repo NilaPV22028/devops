@@ -1,0 +1,1055 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Underground Pest Detection — Field Simulation</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        :root {
+            --soil-dark: #1c140f;
+            --soil-mid: #3a2a1d;
+            --panel-bg: #120d0a;
+            --line: #4a382a;
+            --signal-cyan: #5fd3bc;
+            --alert-amber: #e8934a;
+            --crop-green: #7fb069;
+            --text-hi: #f2eade;
+            --text-lo: #a89a86;
+            --mono: 'IBM Plex Mono', 'Courier New', monospace;
+            --disp: 'Space Grotesk', 'Trebuchet MS', sans-serif;
+        }
+
+        @font-face {
+            font-family: 'Space Grotesk';
+            src: local('Space Grotesk');
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            margin: 0;
+            height: 100%;
+            background: var(--soil-dark);
+            overflow: hidden;
+            font-family: var(--mono);
+        }
+
+        #canvas-wrap {
+            position: absolute;
+            inset: 0;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            cursor: grab;
+        }
+
+        canvas:active {
+            cursor: grabbing;
+        }
+
+        .hud {
+            position: absolute;
+            z-index: 5;
+            color: var(--text-hi);
+            pointer-events: none;
+        }
+
+        .hud * {
+            pointer-events: auto;
+        }
+
+        #title-block {
+            top: 22px;
+            left: 24px;
+            max-width: 360px;
+        }
+
+        #title-block .eyebrow {
+            font-family: var(--mono);
+            font-size: 11px;
+            letter-spacing: 0.18em;
+            color: var(--signal-cyan);
+            text-transform: uppercase;
+            margin-bottom: 6px;
+        }
+
+        #title-block h1 {
+            font-family: var(--disp);
+            font-size: 26px;
+            font-weight: 700;
+            margin: 0 0 8px 0;
+            line-height: 1.15;
+            color: var(--text-hi);
+        }
+
+        #title-block p {
+            font-size: 12px;
+            color: var(--text-lo);
+            line-height: 1.5;
+            margin: 0;
+        }
+
+        #status-panel {
+            top: 22px;
+            right: 24px;
+            width: 260px;
+            background: rgba(18, 13, 10, 0.82);
+            border: 1px solid var(--line);
+            border-radius: 2px;
+            padding: 16px 18px;
+            backdrop-filter: blur(6px);
+        }
+
+        #status-panel .label {
+            font-size: 10px;
+            letter-spacing: 0.14em;
+            color: var(--text-lo);
+            text-transform: uppercase;
+            margin-bottom: 6px;
+        }
+
+        #status-line {
+            font-family: var(--mono);
+            font-size: 13px;
+            color: var(--signal-cyan);
+            min-height: 36px;
+            line-height: 1.4;
+            transition: color 0.3s;
+        }
+
+        #status-line.alert {
+            color: var(--alert-amber);
+        }
+
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            color: var(--text-lo);
+            border-top: 1px solid var(--line);
+            padding-top: 8px;
+            margin-top: 10px;
+        }
+
+        .stat-row span:last-child {
+            color: var(--text-hi);
+        }
+
+        #controls {
+            bottom: 24px;
+            left: 24px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            background: rgba(18, 13, 10, 0.82);
+            border: 1px solid var(--line);
+            padding: 10px 14px;
+            border-radius: 2px;
+            backdrop-filter: blur(6px);
+        }
+
+        #controls button {
+            font-family: var(--mono);
+            font-size: 11px;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            background: transparent;
+            color: var(--text-hi);
+            border: 1px solid var(--line);
+            padding: 8px 14px;
+            border-radius: 2px;
+            cursor: pointer;
+            transition: border-color 0.2s, color 0.2s;
+        }
+
+        #controls button:hover {
+            border-color: var(--signal-cyan);
+            color: var(--signal-cyan);
+        }
+
+        #controls label {
+            font-size: 11px;
+            color: var(--text-lo);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            user-select: none;
+        }
+
+        #mode-toggle {
+            position: absolute;
+            z-index: 5;
+            bottom: 80px;
+            left: 24px;
+            display: flex;
+            background: rgba(18, 13, 10, 0.82);
+            border: 1px solid var(--line);
+            border-radius: 2px;
+            overflow: hidden;
+            backdrop-filter: blur(6px);
+        }
+
+        #mode-toggle button {
+            font-family: var(--mono);
+            font-size: 11px;
+            letter-spacing: 0.04em;
+            padding: 10px 16px;
+            background: transparent;
+            color: var(--text-lo);
+            border: none;
+            border-right: 1px solid var(--line);
+            cursor: pointer;
+            transition: background 0.2s, color 0.2s;
+        }
+
+        #mode-toggle button:last-child {
+            border-right: none;
+        }
+
+        #mode-toggle button.active {
+            background: rgba(95, 211, 188, 0.12);
+            color: var(--signal-cyan);
+        }
+
+        #mode-toggle button.active.baseline-active {
+            background: rgba(232, 147, 74, 0.14);
+            color: var(--alert-amber);
+        }
+
+        #legend {
+            bottom: 24px;
+            right: 24px;
+            background: rgba(18, 13, 10, 0.82);
+            border: 1px solid var(--line);
+            padding: 12px 16px;
+            border-radius: 2px;
+            font-size: 11px;
+            color: var(--text-lo);
+            backdrop-filter: blur(6px);
+            line-height: 1.8;
+        }
+
+        #legend .dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+
+        #hint {
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 10px;
+            color: var(--text-lo);
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            opacity: 0.5;
+            text-align: center;
+            animation: fadeout 4s forwards;
+        }
+
+        @keyframes fadeout {
+            0% {
+                opacity: 0.6;
+            }
+
+            80% {
+                opacity: 0.6;
+            }
+
+            100% {
+                opacity: 0;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="canvas-wrap"></div>
+
+    <div class="hud" id="title-block">
+        <div class="eyebrow">Field Simulation — v0.1 Prototype</div>
+        <h1>Underground Pest Detection &amp; Adaptive Deterrent</h1>
+        <p>Cutaway view of a tuber crop row. Buried vibration sensors monitor soil for burrowing activity and trigger a
+            deterrent only when confirmed — instead of broadcasting constantly.</p>
+    </div>
+
+    <div class="hud" id="status-panel">
+        <div class="label">System Status</div>
+        <div id="status-line">Idle — monitoring soil for activity…</div>
+        <div class="stat-row"><span>Sensor nodes</span><span id="node-count">9</span></div>
+        <div class="stat-row"><span>Detections (session)</span><span id="detect-count">0</span></div>
+        <div class="stat-row"><span>Coverage radius</span><span>~4.0 m / node</span></div>
+        <div class="stat-row"><span>Pulses emitted</span><span id="pulse-count">0</span></div>
+        <div class="stat-row"><span>Crop loss events</span><span id="damage-count">0</span></div>
+        <div class="stat-row"><span>Habituation</span><span id="habit-status">n/a</span></div>
+    </div>
+
+    <div class="hud" id="mode-toggle">
+        <button id="mode-adaptive" class="active">Adaptive (this system)</button>
+        <button id="mode-baseline">Constant broadcast (baseline)</button>
+    </div>
+
+    <div class="hud" id="controls">
+        <button id="btn-play">Pause</button>
+        <button id="btn-reset">Reset</button>
+        <label><input type="checkbox" id="chk-radius" checked> Detection zones</label>
+        <label><input type="checkbox" id="chk-rodent" checked> Show intruder</label>
+    </div>
+
+    <div class="hud" id="legend">
+        <div><span class="dot" style="background:#5fd3bc;"></span>Sensor — idle</div>
+        <div><span class="dot" style="background:#e8934a;"></span>Sensor — alert / deterring</div>
+        <div><span class="dot" style="background:#8a5a3c;"></span>Intruder (rodent)</div>
+        <div><span class="dot" style="background:#7fb069;"></span>Tuber crop row</div>
+        <div><span class="dot" style="background:#6b4a2e;"></span>Crop damaged (baseline mode)</div>
+    </div>
+
+    <div class="hud" id="hint">drag to orbit · scroll to zoom</div>
+
+    <script>
+        (function () {
+            const wrap = document.getElementById('canvas-wrap');
+            const W = () => wrap.clientWidth, H = () => wrap.clientHeight;
+
+            const scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x1c140f);
+            scene.fog = new THREE.FogExp2(0x1c140f, 0.018);
+
+            const camera = new THREE.PerspectiveCamera(42, W() / H(), 0.1, 200);
+
+            const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.setSize(W(), H());
+            wrap.appendChild(renderer.domElement);
+
+            // ---------- lighting ----------
+            scene.add(new THREE.AmbientLight(0x554433, 0.9));
+            const sun = new THREE.DirectionalLight(0xffe3b3, 0.9);
+            sun.position.set(12, 18, 8);
+            scene.add(sun);
+            const rim = new THREE.DirectionalLight(0x5fd3bc, 0.25);
+            rim.position.set(-10, 6, -10);
+            scene.add(rim);
+
+            // ---------- camera orbit (manual, no OrbitControls dependency) ----------
+            let camDist = 26, camTheta = 0.85, camPhi = 1.05, camTarget = new THREE.Vector3(0, -0.5, 0);
+            function updateCamera() {
+                camPhi = Math.max(0.35, Math.min(1.45, camPhi));
+                camDist = Math.max(10, Math.min(48, camDist));
+                const x = camDist * Math.sin(camPhi) * Math.sin(camTheta);
+                const y = camDist * Math.cos(camPhi);
+                const z = camDist * Math.sin(camPhi) * Math.cos(camTheta);
+                camera.position.set(x, y, z).add(camTarget);
+                camera.lookAt(camTarget);
+            }
+            updateCamera();
+
+            let dragging = false, lastX = 0, lastY = 0;
+            renderer.domElement.addEventListener('pointerdown', e => { dragging = true; lastX = e.clientX; lastY = e.clientY; });
+            window.addEventListener('pointerup', () => dragging = false);
+            window.addEventListener('pointermove', e => {
+                if (!dragging) return;
+                const dx = e.clientX - lastX, dy = e.clientY - lastY;
+                lastX = e.clientX; lastY = e.clientY;
+                camTheta -= dx * 0.006;
+                camPhi -= dy * 0.005;
+                updateCamera();
+            });
+            renderer.domElement.addEventListener('wheel', e => {
+                e.preventDefault();
+                camDist += e.deltaY * 0.02;
+                updateCamera();
+            }, { passive: false });
+
+            // ---------- ground / soil block (x-ray cutaway) ----------
+            const PLOT = 16; // plot width/depth in scene units
+            const SOIL_DEPTH = 5;
+
+            const soilGroup = new THREE.Group();
+            scene.add(soilGroup);
+
+            // Soil Layer 1: Topsoil (Dark Organic Brown)
+            const topsoilMat = new THREE.MeshStandardMaterial({
+                color: 0x2d1f15, transparent: true, opacity: 0.45,
+                roughness: 1.0, metalness: 0.0, depthWrite: false
+            });
+            const topsoil = new THREE.Mesh(new THREE.BoxGeometry(PLOT, 1.2, PLOT), topsoilMat);
+            topsoil.position.y = -0.6;
+            soilGroup.add(topsoil);
+
+            // Soil Layer 2: Subsoil (Clay/Sandy Brown)
+            const subsoilMat = new THREE.MeshStandardMaterial({
+                color: 0x3d2719, transparent: true, opacity: 0.55,
+                roughness: 1.0, metalness: 0.0, depthWrite: false
+            });
+            const subsoil = new THREE.Mesh(new THREE.BoxGeometry(PLOT, 2.0, PLOT), subsoilMat);
+            subsoil.position.y = -2.2;
+            soilGroup.add(subsoil);
+
+            // Soil Layer 3: Bedrock (Stony/Gray-Brown)
+            const bedrockMat = new THREE.MeshStandardMaterial({
+                color: 0x483a30, transparent: true, opacity: 0.65,
+                roughness: 1.0, metalness: 0.0, depthWrite: false
+            });
+            const bedrock = new THREE.Mesh(new THREE.BoxGeometry(PLOT, 1.8, PLOT), bedrockMat);
+            bedrock.position.y = -4.1;
+            soilGroup.add(bedrock);
+
+            // Subtle lines between layers
+            const dividerMat = new THREE.LineBasicMaterial({ color: 0x5a4632, transparent: true, opacity: 0.25 });
+            const divGeo1 = new THREE.EdgesGeometry(new THREE.BoxGeometry(PLOT, 0.01, PLOT));
+            const div1 = new THREE.LineSegments(divGeo1, dividerMat);
+            div1.position.y = -1.2;
+            soilGroup.add(div1);
+
+            const divGeo2 = new THREE.EdgesGeometry(new THREE.BoxGeometry(PLOT, 0.01, PLOT));
+            const div2 = new THREE.LineSegments(divGeo2, dividerMat);
+            div2.position.y = -3.2;
+            soilGroup.add(div2);
+
+            // Add organic soil debris/stones
+            const stoneMat = new THREE.MeshStandardMaterial({ color: 0x5a483a, roughness: 0.95 });
+            const stoneGeo = new THREE.DodecahedronGeometry(0.06, 0);
+            for (let i = 0; i < 40; i++) {
+                const stone = new THREE.Mesh(stoneGeo.clone(), stoneMat);
+                stone.scale.set(0.5 + Math.random() * 0.8, 0.5 + Math.random() * 0.8, 0.5 + Math.random() * 0.8);
+                stone.position.set(
+                    (Math.random() - 0.5) * (PLOT - 0.8),
+                    -0.1 - Math.random() * (SOIL_DEPTH - 0.2),
+                    (Math.random() - 0.5) * (PLOT - 0.8)
+                );
+                stone.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+                soilGroup.add(stone);
+            }
+
+            // soil top grid (surface reference)
+            const grid = new THREE.GridHelper(PLOT, 8, 0x6a5238, 0x4a382a);
+            grid.position.y = 0.02;
+            scene.add(grid);
+
+            // soil wire edges for clarity
+            const edges = new THREE.LineSegments(
+                new THREE.EdgesGeometry(new THREE.BoxGeometry(PLOT, SOIL_DEPTH, PLOT)),
+                new THREE.LineBasicMaterial({ color: 0x5a4632, transparent: true, opacity: 0.4 })
+            );
+            edges.position.y = -SOIL_DEPTH / 2;
+            scene.add(edges);
+
+            // Helper to deform spheres into potato shapes
+            function createPotatoGeometry() {
+                const geo = new THREE.DodecahedronGeometry(0.09, 1);
+                const pos = geo.attributes.position;
+                for (let i = 0; i < pos.count; i++) {
+                    let x = pos.getX(i);
+                    let y = pos.getY(i);
+                    let z = pos.getZ(i);
+                    x += (Math.random() - 0.5) * 0.035;
+                    y += (Math.random() - 0.5) * 0.035;
+                    z += (Math.random() - 0.5) * 0.035;
+                    pos.setXYZ(i, x, y, z);
+                }
+                geo.computeVertexNormals();
+                return geo;
+            }
+
+            // ---------- crop rows (above & below ground) ----------
+            const cropGroup = new THREE.Group();
+            const stemMat = new THREE.MeshStandardMaterial({ color: 0x5a7a45, roughness: 0.8 });
+            const leafMat = new THREE.MeshStandardMaterial({ color: 0x7fb069, roughness: 0.7, side: THREE.DoubleSide });
+            const potatoMat = new THREE.MeshStandardMaterial({ color: 0xb58957, roughness: 0.9 });
+            const rootMat = new THREE.MeshStandardMaterial({ color: 0x5a4c3e, roughness: 0.95 });
+
+            const crops = []; // {group, foliage, leaves, tubers, healthy, x, z}
+            for (let row = -1; row <= 1; row++) {
+                for (let i = -3; i <= 3; i++) {
+                    const px = i * 1.9, pz = row * 5;
+                    const plant = new THREE.Group();
+                    plant.position.set(px, 0, pz);
+
+                    // 1. Stem
+                    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.03, 0.5, 6), stemMat);
+                    stem.position.y = 0.25;
+                    plant.add(stem);
+
+                    // 2. Foliage (organic rosette of leaves)
+                    const foliage = new THREE.Group();
+                    foliage.position.y = 0.45;
+                    
+                    const leafGeo = new THREE.ConeGeometry(0.07, 0.26, 4);
+                    leafGeo.rotateX(Math.PI / 2);
+                    
+                    const leaves = [];
+                    const leafCount = 8;
+                    for (let j = 0; j < leafCount; j++) {
+                        const leafMesh = new THREE.Mesh(leafGeo, leafMat);
+                        leafMesh.scale.set(1.5, 0.2, 1.0);
+                        const angle = (j / leafCount) * Math.PI * 2 + Math.random() * 0.2;
+                        leafMesh.rotation.y = angle;
+                        leafMesh.rotation.x = 0.3 + Math.random() * 0.2;
+                        
+                        const rad = 0.08;
+                        leafMesh.position.set(Math.sin(angle) * rad, 0.03 + Math.random() * 0.04, Math.cos(angle) * rad);
+                        
+                        foliage.add(leafMesh);
+                        leaves.push(leafMesh);
+                    }
+                    plant.add(foliage);
+
+                    // 3. Roots (underground fibers)
+                    const rootSystem = new THREE.Group();
+                    for (let r = 0; r < 5; r++) {
+                        const rx = (Math.random() - 0.5) * 0.25;
+                        const rz = (Math.random() - 0.5) * 0.25;
+                        const root = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.004, 0.7, 4), rootMat);
+                        root.position.set(rx / 2, -0.35, rz / 2);
+                        root.rotation.set(0.3 * (Math.random() - 0.5), 0, 0.3 * (Math.random() - 0.5));
+                        rootSystem.add(root);
+                    }
+                    plant.add(rootSystem);
+
+                    // 4. Potatoes (tuber crops)
+                    const tubers = [];
+                    const potatoCount = 3;
+                    for (let p = 0; p < potatoCount; p++) {
+                        const potGeo = createPotatoGeometry();
+                        const potato = new THREE.Mesh(potGeo, potatoMat.clone());
+                        potato.scale.set(1.3 + Math.random() * 0.2, 0.85 + Math.random() * 0.15, 0.85 + Math.random() * 0.15);
+                        
+                        const ang = (p / potatoCount) * Math.PI * 2 + Math.random() * 0.5;
+                        const dist = 0.12 + Math.random() * 0.12;
+                        const py = -0.3 - Math.random() * 0.35;
+                        potato.position.set(Math.sin(ang) * dist, py, Math.cos(ang) * dist);
+                        potato.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+                        
+                        plant.add(potato);
+                        tubers.push(potato);
+                    }
+
+                    cropGroup.add(plant);
+                    crops.push({
+                        group: plant,
+                        foliage: foliage,
+                        leaves: leaves,
+                        tubers: tubers,
+                        healthy: true,
+                        x: px,
+                        z: pz
+                    });
+                }
+            }
+            scene.add(cropGroup);
+
+            // ---------- sensor nodes ----------
+            const stalkMat = new THREE.MeshStandardMaterial({ color: 0x7a8595, metalness: 0.75, roughness: 0.25 });
+            const boxMat = new THREE.MeshStandardMaterial({ color: 0x222a35, roughness: 0.45, metalness: 0.15 });
+            const solarMat = new THREE.MeshStandardMaterial({ color: 0x101a2b, metalness: 0.85, roughness: 0.15 });
+            const antennaMat = new THREE.MeshStandardMaterial({ color: 0xbac5d5, metalness: 0.8, roughness: 0.2 });
+            const probeMat = new THREE.MeshStandardMaterial({ color: 0x5a6575, metalness: 0.7, roughness: 0.3 });
+
+            const nodeHeadIdleMat = new THREE.MeshStandardMaterial({ color: 0x5fd3bc, emissive: 0x5fd3bc, emissiveIntensity: 0.6, roughness: 0.3 });
+            const nodeHeadAlertMat = new THREE.MeshStandardMaterial({ color: 0xe8934a, emissive: 0xe8934a, emissiveIntensity: 0.9, roughness: 0.3 });
+
+            const NODE_RADIUS = 4.0; // detection radius in scene units
+            const nodePositions = [];
+            const gridSpan = 5.4;
+            for (let gx = -1; gx <= 1; gx++) {
+                for (let gz = -1; gz <= 1; gz++) {
+                    nodePositions.push(new THREE.Vector3(gx * gridSpan, 0, gz * gridSpan));
+                }
+            }
+
+            const nodes = nodePositions.map(pos => {
+                const g = new THREE.Group();
+                g.position.copy(pos);
+
+                // Metallic stake passing through soil surface
+                const stalk = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.03, 1.1, 8), stalkMat);
+                stalk.position.y = 0.1; // spans from y=-0.45 to y=0.65
+                g.add(stalk);
+
+                // Control enclosure above ground
+                const enclosure = new THREE.Group();
+                
+                const box = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.18, 0.18), boxMat);
+                box.position.y = 0.65;
+                enclosure.add(box);
+
+                // Solar panel on top
+                const solarPanel = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.012, 0.18), solarMat);
+                solarPanel.position.set(0, 0.75, 0);
+                solarPanel.rotation.x = 0.45;
+                enclosure.add(solarPanel);
+
+                // Thin antenna
+                const antenna = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.22, 4), antennaMat);
+                antenna.position.set(0.07, 0.75, -0.07);
+                enclosure.add(antenna);
+
+                // Indicator LED (will bob with enclosure and flash/glow)
+                const head = new THREE.Mesh(new THREE.SphereGeometry(0.028, 8, 8), nodeHeadIdleMat.clone());
+                head.position.set(0, 0.65, 0.10);
+                enclosure.add(head);
+
+                g.add(enclosure);
+
+                // Buried probe tip (connects to bottom of stake)
+                const buried = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.22, 8), nodeHeadIdleMat.clone());
+                buried.position.y = -0.55;
+                buried.rotation.x = Math.PI;
+                g.add(buried);
+
+                // detection radius ring (dashed circle on ground)
+                const ringGeo = new THREE.RingGeometry(NODE_RADIUS - 0.03, NODE_RADIUS, 64);
+                const ringMat = new THREE.MeshBasicMaterial({ color: 0x5fd3bc, transparent: true, opacity: 0.14, side: THREE.DoubleSide });
+                const ring = new THREE.Mesh(ringGeo, ringMat);
+                ring.rotation.x = -Math.PI / 2;
+                ring.position.y = 0.03;
+                g.add(ring);
+
+                // underground hemisphere volume (subtle)
+                const domeGeo = new THREE.SphereGeometry(NODE_RADIUS * 0.55, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2);
+                const domeMat = new THREE.MeshBasicMaterial({ color: 0x5fd3bc, transparent: true, opacity: 0.035, side: THREE.DoubleSide });
+                const dome = new THREE.Mesh(domeGeo, domeMat);
+                dome.rotation.x = Math.PI;
+                dome.position.y = -0.05;
+                g.add(dome);
+
+                scene.add(g);
+                return { group: g, enclosure, head, buried, ring, dome, alert: false, pulseRings: [] };
+            });
+
+            document.getElementById('node-count').textContent = nodes.length;
+
+            // ---------- intruder (rodent) ----------
+            const rodentGroup = new THREE.Group();
+            const rodentMat = new THREE.MeshStandardMaterial({ color: 0x6e523f, roughness: 0.75 });
+            const pinkMat = new THREE.MeshStandardMaterial({ color: 0xefa4b0, roughness: 0.65 });
+            const eyeMat = new THREE.MeshStandardMaterial({ color: 0x0a0a0a, roughness: 0.15 });
+
+            // Body (oriented along Z-axis for standard forward direction)
+            const body = new THREE.Mesh(new THREE.SphereGeometry(0.15, 16, 12), rodentMat);
+            body.scale.set(1.0, 0.95, 1.6); // elongated along Z
+            rodentGroup.add(body);
+
+            // Head
+            const head3 = new THREE.Mesh(new THREE.SphereGeometry(0.11, 12, 10), rodentMat);
+            head3.position.set(0, 0.04, 0.22);
+            rodentGroup.add(head3);
+
+            // Snout (extends forward along +Z)
+            const snoutGeo = new THREE.ConeGeometry(0.055, 0.1, 8);
+            snoutGeo.rotateX(Math.PI / 2);
+            const snout = new THREE.Mesh(snoutGeo, rodentMat);
+            snout.position.set(0, 0.02, 0.31);
+            rodentGroup.add(snout);
+
+            // Nose tip
+            const nose = new THREE.Mesh(new THREE.SphereGeometry(0.02, 8, 8), pinkMat);
+            nose.position.set(0, 0.02, 0.365);
+            rodentGroup.add(nose);
+
+            // Beady eyes
+            const eyeGeo = new THREE.SphereGeometry(0.016, 8, 8);
+            const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
+            leftEye.position.set(-0.055, 0.07, 0.26);
+            const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
+            rightEye.position.set(0.055, 0.07, 0.26);
+            rodentGroup.add(leftEye);
+            rodentGroup.add(rightEye);
+
+            // Ears
+            const earGeo = new THREE.SphereGeometry(0.032, 8, 8);
+            const leftEarOuter = new THREE.Mesh(earGeo, rodentMat);
+            leftEarOuter.position.set(-0.075, 0.12, 0.17);
+            leftEarOuter.scale.set(0.5, 1.2, 1.0);
+            leftEarOuter.rotation.y = -0.2;
+            const leftEarInner = new THREE.Mesh(earGeo, pinkMat);
+            leftEarInner.position.set(-0.07, 0.12, 0.175);
+            leftEarInner.scale.set(0.3, 0.9, 0.7);
+            leftEarInner.rotation.y = -0.2;
+            
+            const rightEarOuter = new THREE.Mesh(earGeo, rodentMat);
+            rightEarOuter.position.set(0.075, 0.12, 0.17);
+            rightEarOuter.scale.set(0.5, 1.2, 1.0);
+            rightEarOuter.rotation.y = 0.2;
+            const rightEarInner = new THREE.Mesh(earGeo, pinkMat);
+            rightEarInner.position.set(0.07, 0.12, 0.175);
+            rightEarInner.scale.set(0.3, 0.9, 0.7);
+            rightEarInner.rotation.y = 0.2;
+            
+            rodentGroup.add(leftEarOuter);
+            rodentGroup.add(leftEarInner);
+            rodentGroup.add(rightEarOuter);
+            rodentGroup.add(rightEarInner);
+
+            // Tail (extends backward along -Z, will wiggle)
+            const tailGroup = new THREE.Group();
+            tailGroup.position.set(0, -0.05, -0.23);
+            
+            const tailGeo = new THREE.CylinderGeometry(0.012, 0.005, 0.35, 8);
+            tailGeo.rotateX(Math.PI / 2);
+            const tailMesh = new THREE.Mesh(tailGeo, pinkMat);
+            tailMesh.position.set(0, 0, -0.16);
+            tailGroup.add(tailMesh);
+            rodentGroup.add(tailGroup);
+            rodentGroup.tailGroup = tailGroup;
+
+            // Legs (4 pivoted leg groups for running animation)
+            const legGeo = new THREE.CylinderGeometry(0.018, 0.018, 0.12, 6);
+            const clawGeo = new THREE.ConeGeometry(0.006, 0.03, 4);
+            clawGeo.rotateX(Math.PI / 2);
+
+            function createLeg(offsetX, offsetZ) {
+                const legPiv = new THREE.Group();
+                legPiv.position.set(offsetX, -0.08, offsetZ);
+
+                const legMesh = new THREE.Mesh(legGeo, rodentMat);
+                legMesh.position.y = -0.05;
+                legPiv.add(legMesh);
+
+                // Little claws for digging
+                for (let c = -1; c <= 1; c++) {
+                    const claw = new THREE.Mesh(clawGeo, pinkMat);
+                    claw.position.set(c * 0.012, -0.11, 0.02);
+                    claw.rotation.y = c * 0.2;
+                    legPiv.add(claw);
+                }
+
+                rodentGroup.add(legPiv);
+                return legPiv;
+            }
+
+            rodentGroup.frontLeftLeg = createLeg(-0.11, 0.14);
+            rodentGroup.frontRightLeg = createLeg(0.11, 0.14);
+            rodentGroup.backLeftLeg = createLeg(-0.11, -0.14);
+            rodentGroup.backRightLeg = createLeg(0.11, -0.14);
+
+            rodentGroup.position.y = -0.9;
+            scene.add(rodentGroup);
+
+
+            // path: enters from field edge, wanders toward crop row, then flees if deterred
+            let t = 0;
+            let fleeing = false;
+            let fleeDir = new THREE.Vector3();
+            let detectCount = 0;
+            let playing = true;
+
+            // adaptive vs constant-broadcast comparison state
+            let mode = 'adaptive'; // 'adaptive' | 'baseline'
+            let pulseCount = 0;
+            let damageCount = 0;
+            let habituation = 0;
+            const HABITUATION_THRESHOLD = 3;
+            let baselineTimer = 0;
+            const BASELINE_INTERVAL = 1.4; // seconds between blind broadcast pulses
+
+            function rodentPathPos(time) {
+                const x = Math.sin(time * 0.15) * 5.5;
+                const z = -PLOT / 2 + 1.5 + (time * 0.35) % (PLOT - 3);
+                return new THREE.Vector3(x, -0.9, z);
+            }
+
+            // ---------- pulse rings (deterrent visualization) ----------
+            const pulseMat = new THREE.MeshBasicMaterial({ color: 0xe8934a, transparent: true, opacity: 0.6, side: THREE.DoubleSide });
+            function spawnPulse(nodeGroup) {
+                const geo = new THREE.RingGeometry(0.1, 0.16, 32);
+                const mesh = new THREE.Mesh(geo, pulseMat.clone());
+                mesh.rotation.x = -Math.PI / 2;
+                mesh.position.set(nodeGroup.position.x, 0.04, nodeGroup.position.z);
+                mesh.userData = { life: 0 };
+                scene.add(mesh);
+                activePulses.push(mesh);
+            }
+            const activePulses = [];
+
+            // ---------- status / UI wiring ----------
+            const statusLine = document.getElementById('status-line');
+            const detectCountEl = document.getElementById('detect-count');
+            let statusCooldown = 0;
+
+            document.getElementById('btn-play').addEventListener('click', function () {
+                playing = !playing;
+                this.textContent = playing ? 'Pause' : 'Play';
+            });
+            const pulseCountEl = document.getElementById('pulse-count');
+            const damageCountEl = document.getElementById('damage-count');
+            const habitStatusEl = document.getElementById('habit-status');
+
+            // Crop damage and reset visual helpers
+            function damageCrop(crop) {
+                crop.healthy = false;
+                crop.foliage.position.y = 0.38; // droop foliage down
+                crop.leaves.forEach(leaf => {
+                    leaf.rotation.x = 0.85; // bend leaves down
+                    leaf.scale.set(1.1, 0.15, 0.85); // shrivel
+                    leaf.material.color.set(0x5a483a); // dry brown color
+                });
+                crop.tubers.forEach(tuber => {
+                    tuber.material.color.set(0x3a3026); // rotten dark gray/brown
+                    tuber.scale.set(0.8, 0.6, 0.8); // shriveled size
+                });
+            }
+
+            function resetCrop(crop) {
+                crop.healthy = true;
+                crop.foliage.position.y = 0.45; // restore height
+                crop.leaves.forEach((leaf, j) => {
+                    leaf.rotation.x = 0.3 + Math.random() * 0.2;
+                    leaf.scale.set(1.5, 0.2, 1.0);
+                    leaf.material.color.set(0x7fb069); // healthy green
+                });
+                crop.tubers.forEach(tuber => {
+                    tuber.material.color.set(0xb58957); // fresh golden brown
+                    tuber.scale.set(1.3 + Math.random() * 0.2, 0.85 + Math.random() * 0.15, 0.85 + Math.random() * 0.15);
+                });
+            }
+
+            function resetSim() {
+                t = 0; fleeing = false; detectCount = 0; pulseCount = 0; damageCount = 0; habituation = 0; baselineTimer = 0;
+                detectCountEl.textContent = 0;
+                pulseCountEl.textContent = 0;
+                damageCountEl.textContent = 0;
+                habitStatusEl.textContent = mode === 'baseline' ? '0 / ' + HABITUATION_THRESHOLD : 'n/a';
+                activePulses.forEach(p => scene.remove(p));
+                activePulses.length = 0;
+                nodes.forEach(n => setNodeIdle(n));
+                crops.forEach(c => resetCrop(c));
+                statusLine.textContent = mode === 'adaptive'
+                    ? 'Idle — monitoring soil for activity…'
+                    : 'Broadcasting continuously, regardless of activity…';
+                statusLine.classList.remove('alert');
+            }
+
+            document.getElementById('btn-reset').addEventListener('click', resetSim);
+
+            const btnAdaptive = document.getElementById('mode-adaptive');
+            const btnBaseline = document.getElementById('mode-baseline');
+            function setMode(newMode) {
+                mode = newMode;
+                btnAdaptive.classList.toggle('active', mode === 'adaptive');
+                btnBaseline.classList.toggle('active', mode === 'baseline');
+                btnBaseline.classList.toggle('baseline-active', mode === 'baseline');
+                resetSim();
+            }
+            btnAdaptive.addEventListener('click', () => setMode('adaptive'));
+            btnBaseline.addEventListener('click', () => setMode('baseline'));
+            const chkRadius = document.getElementById('chk-radius');
+            const chkRodent = document.getElementById('chk-rodent');
+            chkRadius.addEventListener('change', () => {
+                nodes.forEach(n => { n.ring.visible = chkRadius.checked; n.dome.visible = chkRadius.checked; });
+            });
+            chkRodent.addEventListener('change', () => { rodentGroup.visible = chkRodent.checked; });
+
+            function setNodeAlert(n) {
+                if (n.alert) return;
+                n.alert = true;
+                n.head.material = nodeHeadAlertMat.clone();
+                n.buried.material = nodeHeadAlertMat.clone();
+            }
+            function setNodeIdle(n) {
+                n.alert = false;
+                n.head.material = nodeHeadIdleMat.clone();
+                n.buried.material = nodeHeadIdleMat.clone();
+            }
+
+            // ---------- animation loop ----------
+            const clock = new THREE.Clock();
+            function animate() {
+                requestAnimationFrame(animate);
+                const dt = Math.min(clock.getDelta(), 0.05);
+
+                if (playing) {
+                    t += dt;
+
+                    // move rodent
+                    const pos = rodentPathPos(t);
+                    if (fleeing) {
+                        rodentGroup.position.addScaledVector(fleeDir, dt * 4.0);
+                    } else {
+                        const distToTarget = pos.distanceTo(rodentGroup.position);
+                        if (distToTarget > 6.0) {
+                            rodentGroup.position.copy(pos); // Snap on wrap-around teleport
+                        } else {
+                            rodentGroup.position.lerp(pos, 0.08);
+                        }
+                    }
+
+                    // Smooth orientation of rodent towards its heading
+                    let headingDir = new THREE.Vector3();
+                    if (fleeing) {
+                        headingDir.copy(fleeDir);
+                    } else {
+                        headingDir.copy(pos).sub(rodentGroup.position);
+                    }
+                    if (headingDir.lengthSq() > 0.001) {
+                        headingDir.y = 0;
+                        headingDir.normalize();
+                        const targetAngle = Math.atan2(headingDir.x, headingDir.z);
+                        let diff = targetAngle - rodentGroup.rotation.y;
+                        while (diff < -Math.PI) diff += Math.PI * 2;
+                        while (diff > Math.PI) diff -= Math.PI * 2;
+                        rodentGroup.rotation.y += diff * 0.15;
+                    }
+
+                    // Animate rodent limbs and tail
+                    const legSpeed = fleeing ? 25 : 15;
+                    const legSwing = fleeing ? 0.65 : 0.45;
+                    rodentGroup.frontLeftLeg.rotation.x = Math.sin(t * legSpeed) * legSwing;
+                    rodentGroup.frontRightLeg.rotation.x = -Math.sin(t * legSpeed) * legSwing;
+                    rodentGroup.backLeftLeg.rotation.x = -Math.sin(t * legSpeed) * legSwing;
+                    rodentGroup.backRightLeg.rotation.x = Math.sin(t * legSpeed) * legSwing;
+                    rodentGroup.tailGroup.rotation.y = Math.sin(t * (fleeing ? 20 : 12)) * 0.3;
+
+                    if (mode === 'adaptive') {
+                        // --- ADAPTIVE: sensors stay idle until confirmed activity, then trigger only the relevant node ---
+                        nodes.forEach(n => {
+                            const d = new THREE.Vector2(rodentGroup.position.x - n.group.position.x, rodentGroup.position.z - n.group.position.z).length();
+                            if (d < NODE_RADIUS * 0.55 && !fleeing && chkRodent.checked) {
+                                if (!n.alert) {
+                                    setNodeAlert(n);
+                                    spawnPulse(n.group);
+                                    pulseCount++; pulseCountEl.textContent = pulseCount;
+                                    detectCount++;
+                                    detectCountEl.textContent = detectCount;
+                                    statusLine.textContent = 'Activity confirmed — deterrent triggered at node ' + (nodes.indexOf(n) + 1);
+                                    statusLine.classList.add('alert');
+                                    statusCooldown = 2.2;
+                                    fleeing = true;
+                                    fleeDir.set(rodentGroup.position.x - n.group.position.x, 0, rodentGroup.position.z - n.group.position.z).normalize();
+                                }
+                            }
+                        });
+
+                        if (fleeing) {
+                            const clear = nodes.every(n => {
+                                const d = new THREE.Vector2(rodentGroup.position.x - n.group.position.x, rodentGroup.position.z - n.group.position.z).length();
+                                return d > NODE_RADIUS * 0.75;
+                            });
+                            if (clear) {
+                                fleeing = false;
+                                nodes.forEach(n => setNodeIdle(n));
+                            }
+                        }
+                    } else {
+                        // --- BASELINE: every node broadcasts on a fixed timer, blind to whether a pest is actually present ---
+                        baselineTimer += dt;
+                        if (baselineTimer >= BASELINE_INTERVAL) {
+                            baselineTimer = 0;
+                            nodes.forEach(n => {
+                                setNodeAlert(n);
+                                spawnPulse(n.group);
+                            });
+                            pulseCount += nodes.length; pulseCountEl.textContent = pulseCount;
+                            setTimeout(() => { if (mode === 'baseline') nodes.forEach(n => setNodeIdle(n)); }, 250);
+
+                            // is the rodent close enough to any node to be exposed to this blind pulse?
+                            const exposed = nodes.some(n => {
+                                const d = new THREE.Vector2(rodentGroup.position.x - n.group.position.x, rodentGroup.position.z - n.group.position.z).length();
+                                return d < NODE_RADIUS * 0.55;
+                            });
+
+                            if (exposed && chkRodent.checked && !fleeing) {
+                                if (habituation < HABITUATION_THRESHOLD) {
+                                    habituation++;
+                                    habitStatusEl.textContent = habituation + ' / ' + HABITUATION_THRESHOLD;
+                                    detectCount++; detectCountEl.textContent = detectCount;
+                                    statusLine.textContent = 'Blind pulse fired — pest startled (reaction ' + habituation + '/' + HABITUATION_THRESHOLD + ')';
+                                    statusLine.classList.add('alert');
+                                    fleeing = true;
+                                    const nearest = nodes.reduce((a, b) => {
+                                        const da = new THREE.Vector2(rodentGroup.position.x - a.group.position.x, rodentGroup.position.z - a.group.position.z).length();
+                                        const db = new THREE.Vector2(rodentGroup.position.x - b.group.position.x, rodentGroup.position.z - b.group.position.z).length();
+                                        return da < db ? a : b;
+                                    });
+                                    fleeDir.set(rodentGroup.position.x - nearest.group.position.x, 0, rodentGroup.position.z - nearest.group.position.z).normalize();
+                                } else {
+                                    statusLine.textContent = 'Pest has habituated to the constant signal — no longer reacts';
+                                    statusLine.classList.add('alert');
+                                }
+                            }
+                        }
+
+                        if (fleeing) {
+                            const clear = nodes.every(n => {
+                                const d = new THREE.Vector2(rodentGroup.position.x - n.group.position.x, rodentGroup.position.z - n.group.position.z).length();
+                                return d > NODE_RADIUS * 0.75;
+                            });
+                            if (clear) fleeing = false;
+                        }
+
+                        // once habituated, the pest can linger near a crop and cause damage
+                        if (habituation >= HABITUATION_THRESHOLD && !fleeing && chkRodent.checked) {
+                            let nearestCrop = null, nearestD = Infinity;
+                            crops.forEach(c => {
+                                const d = new THREE.Vector2(rodentGroup.position.x - c.x, rodentGroup.position.z - c.z).length();
+                                if (d < nearestD) { nearestD = d; nearestCrop = c; }
+                            });
+                            if (nearestCrop && nearestD < 1.0 && nearestCrop.healthy) {
+                                damageCrop(nearestCrop);
+                                damageCount++; damageCountEl.textContent = damageCount;
+                                statusLine.textContent = 'Crop damaged — deterrent no longer effective at this node';
+                            }
+                        }
+                    }
+
+                    if (statusCooldown > 0) {
+                        statusCooldown -= dt;
+                        if (statusCooldown <= 0 && !fleeing) {
+                            statusLine.textContent = 'Idle — monitoring soil for activity…';
+                            statusLine.classList.remove('alert');
+                        }
+                    }
+
+                    // pulse ring animation
+                    for (let i = activePulses.length - 1; i >= 0; i--) {
+                        const p = activePulses[i];
+                        p.userData.life += dt;
+                        const s = 1 + p.userData.life * 6;
+                        p.scale.set(s, s, s);
+                        p.material.opacity = Math.max(0, 0.6 - p.userData.life * 0.5);
+                        if (p.userData.life > 1.2) { scene.remove(p); activePulses.splice(i, 1); }
+                    }
+
+                    // Enclosure mechanical bobbing and LED/probe status animations
+                    nodes.forEach((n, i) => {
+                        n.enclosure.position.y = Math.sin(t * 2 + i) * 0.015;
+
+                        if (n.alert) {
+                            const flash = 0.5 + 0.5 * Math.sin(t * 25);
+                            n.head.material.emissiveIntensity = 0.5 + flash * 0.8;
+                            n.buried.material.emissiveIntensity = 0.5 + flash * 0.8;
+                        } else {
+                            const glow = 0.4 + 0.2 * Math.sin(t * 3.0 + i);
+                            n.head.material.emissiveIntensity = glow;
+                            n.buried.material.emissiveIntensity = glow;
+                        }
+                    });
+                }
+
+                renderer.render(scene, camera);
+            }
+            animate();
+
+            window.addEventListener('resize', () => {
+                camera.aspect = W() / H();
+                camera.updateProjectionMatrix();
+                renderer.setSize(W(), H());
+            });
+        })();
+    </script>
+</body>
+
+</html>
